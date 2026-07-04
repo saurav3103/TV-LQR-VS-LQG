@@ -1,0 +1,7 @@
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+
+# Optional: only required for src/lane_keep/collocation.py
+# (direct collocation / Pontryagin-style open-loop optimal control)
+casadi>=3.6
