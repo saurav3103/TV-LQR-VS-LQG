@@ -1,100 +1,108 @@
-# TV-LQR vs LQG Comparison with Model Mismatch & Lyapunov Analysis
+# TV-LQR vs LQG: Lane-Keeping Control
 
-This repository contains a Python implementation for comparing **Time-Varying LQR (TV-LQR)** and **LQG (Kalman Filter + TV-LQR)** control strategies on a nonlinear bicycle vehicle model. It includes simulations under **model mismatch**, visualizations of **state trajectories**, **Kalman filter estimation errors**, **cumulative costs**, and a **Lyapunov heatmap** for stability analysis.
+A comparison of finite-horizon time-varying LQR (full-state feedback) against LQG
+(Kalman-filter-based output feedback) for lane-keeping control of a nonlinear
+bicycle vehicle model, with an additional open-loop optimal control baseline
+computed via direct collocation.
 
----
+## Overview
 
-## Features
+The plant is a nonlinear single-track (bicycle) model with a saturating tire
+model (cornering stiffness decays with slip angle), linearized about a nominal
+trajectory at each time step and controlled with a backward-Riccati-recursion
+TV-LQR gain sequence.
 
-- **Nonlinear bicycle model** with lateral error, heading error, lateral velocity, and yaw rate.
-- **Linearization and discretization** utilities for TV-LQR design.
-- **Time-Varying LQR (TV-LQR)** implemented using backward Riccati recursion.
-- **Discrete Kalman Filter** for state estimation in LQG control.
-- **Paired simulations** to compare LQR (true states) vs LQG (KF-estimated states).
-- **Model mismatch experiments** by scaling tire stiffness.
-- **Lyapunov heatmap** for visualizing stability of linearized system.
-- Visualization:
-  - State trajectory comparison
-  - Kalman Filter estimation error
-  - Cumulative cost over time
-  - Model mismatch effect
-  - Lyapunov function heatmap
+Two feedback configurations are compared under **identical noise realizations**
+(paired simulation, for a fair comparison):
 
----
+- **LQR** — control law applied to the true state (perfect state knowledge)
+- **LQG** — the same gain sequence applied to a discrete Kalman filter estimate,
+  driven by noisy partial (or full) state measurements
 
-## Requirements
+An additional open-loop **direct collocation** solve (via CasADi/IPOPT) provides
+a Pontryagin-style optimal control baseline to compare against the closed-loop
+TV-LQR/LQG trajectories.
 
-- Python 3.8+
-- `numpy`
-- `scipy`
-- `matplotlib`
+## What's compared
 
-Install dependencies via pip:
+- **State trajectories** — true system response, `e_y` (lateral offset) vs `psi` (yaw)
+- **Estimation error** — Kalman filter estimate vs. true state, per state
+- **Control effort** — steering input over time
+- **Cost** — instantaneous and cumulative quadratic cost `xᵀQx + uᵀRu`
+- **Model mismatch** — closed-loop cost as true tire stiffness deviates from the
+  stiffness assumed during linearization/design
+- **Monte Carlo** — paired trials (same noise draws across LQR/LQG) summarizing
+  control energy and total cost distributions
+- **Lyapunov heatmap** — quadratic Lyapunov function level sets for the
+  linearized closed-loop system
+
+## Repository structure
+
+```
+TV-LQR-VS-LQG/
+├── src/lane_keep/
+│   ├── vehicle_model.py   # nonlinear bicycle model, linearization, discretization
+│   ├── controllers.py     # TV-LQR (backward Riccati), discrete Kalman filter
+│   ├── simulate.py        # paired simulation, Monte Carlo, model-mismatch sweep
+│   ├── collocation.py     # CasADi direct-collocation open-loop solver
+│   └── plotting.py        # trajectory, error, cost, and Lyapunov plots
+├── scripts/               # runnable entry points for each experiment
+├── notebooks/             # original exploratory notebook
+├── results                # saved output plots
+└── docs/                  # writeup.md file
+```
+
+## Installation
 
 ```bash
-pip install numpy scipy matplotlib
----
+git clone https://github.com/saurav3103/TV-LQR-VS-LQG.git
+cd TV-LQR-VS-LQG
+pip install -r requirements.txt
+```
+
+`casadi` is only required for the direct collocation baseline
+(`src/lane_keep/collocation.py` and `scripts/run_collocation.py`); the core
+LQR/LQG comparison only needs `numpy`, `scipy`, and `matplotlib`.
 
 ## Usage
 
-Clone this repository and run the main script:
-
 ```bash
-python tv_lqr_vs_lqg.py
+# Single paired LQR vs LQG run with trajectory/error/cost plots
+python scripts/run_comparison.py
+
+# Monte Carlo comparison across noise realizations
+python scripts/run_monte_carlo.py
+
+# Closed-loop cost sensitivity to tire-stiffness model mismatch
+python scripts/run_model_mismatch.py
+
+# Open-loop optimal control via direct collocation vs closed-loop response
+python scripts/run_collocation.py
 ```
 
-The script performs the following:
+## Model
 
-1. Runs a single simulation comparing TV-LQR vs LQG.
-2. Plots state trajectories (`e_y` vs `psi`).
-3. Plots Kalman Filter estimation errors.
-4. Plots cumulative cost over time.
-5. Runs a **model mismatch experiment** by scaling tire stiffness.
-6. Generates a **Lyapunov heatmap** for the linearized system.
+State vector `x = [e_y, psi, v_y, r]`:
 
----
+| Symbol | Meaning |
+|---|---|
+| `e_y` | lateral offset from lane center (m) |
+| `psi` | heading error (rad) |
+| `v_y` | lateral velocity (m/s) |
+| `r`   | yaw rate (rad/s) |
 
-## Code Overview
+Control input `u = delta` (steering angle, rad), applied at fixed longitudinal
+speed `v_x`. Cornering stiffness saturates with slip angle:
+`C(alpha) = C0 * exp(-k|alpha|)`.
 
-* `nonlinear_bicycle(x, u)`: Computes nonlinear bicycle dynamics.
-* `linearize(x, u)`: Linearizes the nonlinear model around a state-input pair.
-* `discretize_linear(Ac, Bc, Ts)`: Discretizes the linear system using matrix exponential.
-* `tv_lqr_gains(A_seq, B_seq, Q, R, Qf)`: Computes time-varying LQR gains.
-* `discrete_kalman_predict` / `discrete_kalman_update`: Implements discrete Kalman filter for LQG.
-* `simulate_pair(x0, horizon, ...)`: Runs paired LQR vs LQG simulations.
-* `plot_state_trajectory_pair`, `plot_estimation_error`: Visualization utilities.
-* `model_mismatch_experiment`: Evaluates LQR vs LQG performance under model uncertainty.
-* `lyapunov_heatmap`: Plots the Lyapunov function of the linearized system.
+## Notes
 
----
-
-## Example Results
-
-* LQG control can **better handle model mismatch** than standard LQR due to state estimation.
-  <img width="600" height="470" alt="image" src="https://github.com/user-attachments/assets/5375fc31-ca3f-4555-9e4a-af0563a33a7f" />
-* State trajectory plots compare LQR (true-state) vs LQG (KF-estimated) paths.
-  <img width="689" height="547" alt="image" src="https://github.com/user-attachments/assets/b387b021-a75f-4268-a613-fe62dacddacd" />
-* Estimation error plots show the Kalman filter performance.
-  <img width="600" height="470" alt="image" src="https://github.com/user-attachments/assets/908d3fe1-e214-4c81-bb44-6566a2567a7d" />
-* Lyapunov heatmap visualizes stability regions for the linearized system.
-  <img width="553" height="470" alt="image" src="https://github.com/user-attachments/assets/164c3852-e5fe-42bf-9af7-c96ea0ee6e6b" />
-
----
-
-## References
-
-* Kwakernaak, H., & Sivan, R. (1972). *Linear Optimal Control Systems*. Wiley.
-* Ogata, K. (2010). *Modern Control Engineering*. Prentice Hall.
-* Rajamani, R. (2011). *Vehicle Dynamics and Control*. Springer.
-
----
+- LQR and LQG are driven by the **same noise sequence** per trial so that any
+  performance gap is attributable to the estimator, not to random variation.
+- The model-mismatch experiment currently shows LQG's mean cost advantage over
+  LQR narrowing at higher mismatch scales — worth a closer look before treating
+  it as a clean result.
 
 ## License
 
-MIT License
-
----
-
-**Author:** Saurav Avachat
-**Email:** saurav310304@gmail.com
-
+MIT
